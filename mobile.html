@@ -3,10 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Tahoe Road Cams — Mobile v1</title>
+<title>Tahoe Road Cams — Mobile v2</title>
 <link rel="icon" type="image/png" sizes="32x32" href="favicon-32.png">
 <link rel="icon" type="image/png" sizes="256x256" href="favicon-256.png">
 <link rel="icon" type="image/x-icon" href="favicon.ico">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="theme-color" content="#0d1117">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tahoe Cams">
 <style>
   *{box-sizing:border-box}
   html,body{margin:0;min-height:100%;background:#0d1117;color:#e6edf3;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
@@ -18,6 +25,20 @@
   .box h3{margin:0 0 7px;font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#c9d1d9;display:flex;gap:6px;align-items:baseline;flex-wrap:wrap}
   .box h3 small{font-size:10.5px;text-transform:none;letter-spacing:0;color:#8b949e;font-weight:400}
   .muted{color:#8b949e}
+
+  /* install banner */
+  #install{display:none;background:linear-gradient(135deg,#132338,#161b22);border:1px solid #2f6feb;border-radius:10px;padding:10px 10px 11px;margin-bottom:10px;position:relative}
+  #install.show{display:block}
+  #install .ihead{display:flex;align-items:center;gap:9px}
+  #install .iicon{width:34px;height:34px;border-radius:9px;flex:none;background:#0d1117;border:1px solid #30363d;display:grid;place-items:center}
+  #install .iicon img{width:24px;height:24px}
+  #install .ititle{font-size:13.5px;font-weight:700}
+  #install .isub{font-size:11.5px;color:#8b949e;margin-top:1px}
+  #install .ix{position:absolute;top:7px;right:8px;background:none;border:0;color:#6e7681;font-size:15px;line-height:1;cursor:pointer;padding:4px}
+  #install .isteps{font-size:12.5px;color:#c9d1d9;margin:8px 0 0;padding-left:18px;line-height:1.55}
+  #install .isteps b{color:#58a6ff}
+  #install button.ibtn{margin-top:8px;width:100%;background:#2f6feb;color:#fff;border:0;border-radius:8px;padding:9px;font-size:13.5px;font-weight:700;cursor:pointer}
+  #install button.ibtn:active{background:#2558bd}
   .ok{background:#12261a;border:1px solid #238636;color:#aff5b4;border-radius:10px;padding:6px 10px;margin-bottom:8px;font-size:12px}
   .loc{padding:6px 0;border-top:1px solid #21262d}
   .loc:first-child{border-top:0;padding-top:0}
@@ -79,7 +100,16 @@
 </head>
 <body>
 <div id="wrap">
-  <div id="bar">Tahoe Road Cams <span class="ver">v1 · mobile</span></div>
+  <div id="bar">Tahoe Road Cams <span class="ver">v2 · mobile</span></div>
+
+  <div id="install">
+    <button class="ix" id="installX" aria-label="Dismiss">&#10005;</button>
+    <div class="ihead">
+      <div class="iicon"><img src="icon-192.png" alt=""></div>
+      <div><div class="ititle">Install as an app</div><div class="isub" id="installSub">Adds a Tahoe Cams icon to your home screen — opens full-screen, no browser bar.</div></div>
+    </div>
+    <div id="installBody"></div>
+  </div>
 
   <div id="drive" class="box">
     <div class="rt hd"><div id="drt"></div><button id="swap" title="Swap start and destination" aria-label="Swap start and destination">&#8645;</button></div>
@@ -268,6 +298,64 @@ setInterval(()=>CAMS.forEach(c=>{c.img.src=c.src+'?t='+Date.now()}),5000);
 setInterval(loadWx,600000);
 setInterval(loadDrive,120000);
 renderDrive();loadAll();
+
+/* ================= installable web app ================= */
+if('serviceWorker' in navigator){
+  window.addEventListener('load',()=>{navigator.serviceWorker.register('sw.js').catch(()=>{})});
+}
+(function(){
+  const DISMISS_KEY='tahoe-install-dismissed-v2';
+  const panel=$('install'), body=$('installBody'), sub=$('installSub');
+  const isStandalone=window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone===true;
+  if(isStandalone || localStorage.getItem(DISMISS_KEY)==='1') { /* already installed, or user closed it */ }
+  else{
+    const ua=navigator.userAgent;
+    const isIOS=/iPad|iPhone|iPod/.test(ua) || (ua.includes('Macintosh') && navigator.maxTouchPoints>1);
+    const isAndroid=/Android/.test(ua);
+    let deferred=null;
+
+    function showSteps(stepsHTML,subtext){
+      sub.textContent=subtext;
+      body.innerHTML='<ol class="isteps">'+stepsHTML+'</ol>';
+      panel.classList.add('show');
+    }
+    function showButton(){
+      sub.textContent='One tap adds it to your home screen.';
+      body.innerHTML='<button class="ibtn" id="installGo">Install app</button>';
+      panel.classList.add('show');
+      $('installGo').onclick=async()=>{
+        if(!deferred)return;
+        deferred.prompt();
+        const choice=await deferred.userChoice;
+        if(choice.outcome==='accepted'){panel.classList.remove('show');localStorage.setItem(DISMISS_KEY,'1')}
+        deferred=null;
+      };
+    }
+
+    window.addEventListener('beforeinstallprompt',e=>{
+      e.preventDefault();deferred=e;showButton();
+    });
+
+    if(isIOS){
+      showSteps(
+        '<li>Tap the <b>Share</b> icon (square with an arrow) in Safari\'s toolbar</li>'
+        +'<li>Scroll down and tap <b>Add to Home Screen</b></li>'
+        +'<li>Tap <b>Add</b> &mdash; a Tahoe Cams icon appears on your home screen</li>',
+        'Works in Safari on iPhone/iPad (Chrome on iOS can\'t install apps).'
+      );
+    }else if(!isAndroid){
+      // desktop / other browsers that may not fire beforeinstallprompt
+      setTimeout(()=>{ if(!deferred) showSteps(
+        '<li>Open your browser menu (&#8942; or &#9776;)</li>'
+        +'<li>Look for <b>Install app</b> / <b>Add to Home Screen</b> / <b>Install Tahoe Road Cams</b></li>',
+        'Install shortcuts vary by browser.'
+      );},1200);
+    }
+    // Android/Chrome: wait for beforeinstallprompt; if it never fires (unsupported), stay hidden rather than show a dead-end box.
+
+    $('installX').onclick=()=>{panel.classList.remove('show');localStorage.setItem(DISMISS_KEY,'1')};
+  }
+})();
 </script>
 </body>
 </html>
